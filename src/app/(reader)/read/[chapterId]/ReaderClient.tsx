@@ -142,19 +142,24 @@ export default function ReaderClient({
   }, [saveProgress]);
 
   // Like state
-  useEffect(() => {
-    if (!user) return;
-    supabase
+  // Like state
+useEffect(() => {
+  if (!user) return;
+
+  async function checkLike() {
+    const response = await supabase
       .from('likes')
       .select('id')
-      .eq('user_id', user.id)
+      .eq('user_id', user!.id)
       .eq('target_type', 'chapter')
       .eq('target_id', chapter.id)
-      .single()
-      .then(({ data }) => {
-        if (data) setLiked(true);
-      });
-  }, [user, chapter.id, supabase]);
+      .single();
+
+    if (response.data) setLiked(true);
+  }
+
+  checkLike();
+}, [user, chapter.id, supabase]);
 
   async function handleLike() {
     if (!user) return;

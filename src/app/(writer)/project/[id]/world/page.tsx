@@ -6,9 +6,29 @@ import {
   getMagicSystems, getTimelineEras, getTimelineEvents,
   getCreatures, getArtifacts, getFactionRelations,
 } from '@/lib/api/world';
-import WorldArchitect from './WorldArchitect';
+import dynamic from 'next/dynamic';
 
-export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
+// Ленивая загрузка — компонент огромный, не блокируем первый рендер
+const WorldArchitect = dynamic(
+  () => import('./WorldArchitect'),
+  {
+    loading: () => (
+      <div className="max-w-7xl mx-auto px-4 py-6">
+        <div className="h-8 w-48 skeleton mb-6" />
+        <div className="flex gap-6">
+          <div className="w-52 space-y-2 hidden md:block">
+            {Array.from({ length: 9 }).map((_, i) => (
+              <div key={i} className="h-9 skeleton rounded-lg" />
+            ))}
+          </div>
+          <div className="flex-1 h-96 skeleton rounded-lg" />
+        </div>
+      </div>
+    ),
+  }
+);
 
 export default async function WorldPage({
   params,

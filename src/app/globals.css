@@ -234,3 +234,27 @@ input[type="checkbox"] {
   outline-offset: 2px;
   border-radius: 4px;
 }
+
+/* =============================================
+   PERFORMANCE
+   ============================================= */
+
+/* GPU-ускорение для анимируемых элементов */
+.will-change-scroll {
+  will-change: scroll-position;
+}
+
+/* Предотвращаем layout shift у картинок */
+img {
+  content-visibility: auto;
+}
+
+/* Плавные переходы страниц */
+main {
+  animation: fadeIn 0.15s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0.92; }
+  to { opacity: 1; }
+}

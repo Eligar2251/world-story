@@ -5,6 +5,8 @@ import {
   useContext,
   useEffect,
   useState,
+  useCallback,
+  useMemo,
   type ReactNode,
 } from 'react';
 
@@ -29,23 +31,32 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    const saved = localStorage.getItem('ws-theme') as Theme | null;
-    if (saved) {
-      applyTheme(saved);
-    } else if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
-      applyTheme('dark');
-    }
+    try {
+      const saved = localStorage.getItem('ws-theme') as Theme | null;
+      if (saved) {
+        setThemeState(saved);
+        document.documentElement.setAttribute('data-theme', saved);
+      } else if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+        setThemeState('dark');
+        document.documentElement.setAttribute('data-theme', 'dark');
+      }
+    } catch {}
     setMounted(true);
   }, []);
 
-  function applyTheme(t: Theme) {
+  const setTheme = useCallback((t: Theme) => {
     setThemeState(t);
     document.documentElement.setAttribute('data-theme', t);
-    localStorage.setItem('ws-theme', t);
-  }
+    try { localStorage.setItem('ws-theme', t); } catch {}
+  }, []);
+
+  const value = useMemo<ThemeCtx>(
+    () => ({ theme, setTheme, mounted }),
+    [theme, setTheme, mounted]
+  );
 
   return (
-    <Ctx.Provider value={{ theme, setTheme: applyTheme, mounted }}>
+    <Ctx.Provider value={value}>
       {mounted ? children : <div style={{ visibility: 'hidden' }}>{children}</div>}
     </Ctx.Provider>
   );

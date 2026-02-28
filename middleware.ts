@@ -2,6 +2,19 @@ import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 
 export async function middleware(request: NextRequest) {
+  // Пропускаем статические ресурсы и API
+  const { pathname } = request.nextUrl;
+
+  // Быстрый выход для путей, не требующих проверки
+  if (
+    pathname.startsWith('/_next') ||
+    pathname.startsWith('/api') ||
+    pathname.includes('.') ||
+    pathname === '/favicon.ico'
+  ) {
+    return NextResponse.next();
+  }
+
   let supabaseResponse = NextResponse.next({ request });
 
   const supabase = createServerClient(
@@ -25,15 +38,23 @@ export async function middleware(request: NextRequest) {
     }
   );
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // Проверяем auth только для защищённых маршрутов
+  const protectedPaths = ['/studio', '/project', '/editor', '/library', '/notifications'];
+  const needsAuth = protectedPaths.some((p) => pathname.startsWith(p));
 
-  // Защита маршрутов студии
-  if (!user && request.nextUrl.pathname.startsWith('/studio')) {
-    const url = request.nextUrl.clone();
-    url.pathname = '/login';
-    return NextResponse.redirect(url);
+  if (needsAuth) {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      const url = request.nextUrl.clone();
+      url.pathname = '/login';
+      return NextResponse.redirect(url);
+    }
+  } else {
+    // Для публичных страниц — просто обновляем сессию без блокирующего запроса
+    supabase.auth.getSession();
   }
 
   return supabaseResponse;
@@ -41,6 +62,6 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    '/((?!_next/static|_next/image|favicon.ico|manifest.json|icon-.*\\.png|.*\\.(?:svg|jpg|jpeg|gif|webp)$).*)',
   ],
 };

@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { Eye, Heart, BookOpen } from 'lucide-react';
@@ -16,7 +17,7 @@ interface Props {
   size?: 'sm' | 'md';
 }
 
-export default function ProjectCard({ project, size = 'md' }: Props) {
+function ProjectCardRaw({ project, size = 'md' }: Props) {
   const status = statusMap[project.status] ?? statusMap.draft;
   const isMd = size === 'md';
 
@@ -24,8 +25,8 @@ export default function ProjectCard({ project, size = 'md' }: Props) {
     <Link
       href={`/work/${project.id}`}
       className="group flex flex-col rounded-lg bg-surface-raised border border-line overflow-hidden hover:shadow-soft transition-shadow"
+      prefetch={false}
     >
-      {/* Cover */}
       <div
         className={`relative w-full overflow-hidden bg-surface-overlay ${
           isMd ? 'aspect-[2/3]' : 'aspect-[3/4]'
@@ -36,12 +37,14 @@ export default function ProjectCard({ project, size = 'md' }: Props) {
             src={project.cover_url}
             alt={project.title}
             fill
-            sizes={isMd ? '200px' : '150px'}
+            sizes={isMd ? '200px' : '155px'}
             className="object-cover group-hover:scale-105 transition-transform duration-300"
+            loading="lazy"
+            unoptimized
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center">
-            <BookOpen className="w-10 h-10 text-ink-muted" />
+            <BookOpen className="w-8 h-8 text-ink-muted" />
           </div>
         )}
         <div className="absolute top-2 left-2">
@@ -49,7 +52,6 @@ export default function ProjectCard({ project, size = 'md' }: Props) {
         </div>
       </div>
 
-      {/* Info */}
       <div className={`p-3 flex flex-col gap-1 ${isMd ? '' : 'p-2'}`}>
         <h3
           className={`font-semibold text-ink line-clamp-2 group-hover:text-accent transition-colors ${
@@ -65,21 +67,17 @@ export default function ProjectCard({ project, size = 'md' }: Props) {
           </p>
         )}
 
-        {project.genre && (
-          <p className="text-xs text-ink-muted">{project.genre.name}</p>
-        )}
-
         <div className="flex items-center gap-3 mt-1 text-xs text-ink-muted">
           <span className="flex items-center gap-1">
-            <Eye size={12} />
+            <Eye size={11} />
             {formatCount(project.views_count)}
           </span>
           <span className="flex items-center gap-1">
-            <Heart size={12} />
+            <Heart size={11} />
             {formatCount(project.likes_count)}
           </span>
           <span className="flex items-center gap-1">
-            <BookOpen size={12} />
+            <BookOpen size={11} />
             {project.chapters_count}
           </span>
         </div>
@@ -87,6 +85,9 @@ export default function ProjectCard({ project, size = 'md' }: Props) {
     </Link>
   );
 }
+
+const ProjectCard = memo(ProjectCardRaw);
+export default ProjectCard;
 
 function formatCount(n: number): string {
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';

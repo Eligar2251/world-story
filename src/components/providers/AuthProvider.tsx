@@ -6,10 +6,11 @@ import {
   useEffect,
   useState,
   useCallback,
+  useMemo,
   type ReactNode,
 } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import type { User, Session } from '@supabase/supabase-js';
+import type { User, Session, AuthChangeEvent } from '@supabase/supabase-js';
 import type { Profile } from '@/lib/types/database';
 
 interface AuthCtx {
@@ -20,11 +21,7 @@ interface AuthCtx {
   mode: 'reader' | 'writer';
   setMode: (m: 'reader' | 'writer') => void;
   signIn: (email: string, password: string) => Promise<string | null>;
-  signUp: (
-    email: string,
-    password: string,
-    username: string
-  ) => Promise<string | null>;
+  signUp: (email: string, password: string, username: string) => Promise<string | null>;
   signOut: () => Promise<void>;
   signInWithProvider: (provider: 'google' | 'github') => Promise<void>;
 }
@@ -51,7 +48,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [mode, setModeState] = useState<'reader' | 'writer'>('reader');
 
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
 
   const fetchProfile = useCallback(
     async (userId: string) => {
@@ -60,85 +57,115 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         .select('*')
         .eq('id', userId)
         .single();
-      setProfile(data);
+      if (data) setProfile(data);
     },
     [supabase]
   );
 
   useEffect(() => {
+  try {
     const saved = localStorage.getItem('ws-mode');
     if (saved === 'writer') setModeState('writer');
+  } catch {
+    // localStorage недоступен
+  }
 
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        await fetchProfile(session.user.id);
+  // Начальная проверка сессии
+  async function initSession() {
+    const response = await supabase.auth.getSession();
+    const currentSession = response.data?.session ?? null;
+    setSession(currentSession);
+    setUser(currentSession?.user ?? null);
+    if (currentSession?.user) {
+      await fetchProfile(currentSession.user.id);
+    }
+    setLoading(false);
+  }
+
+  initSession();
+
+  // Подписка на изменения auth
+  const { data: authListener } = supabase.auth.onAuthStateChange(
+    async (_event: AuthChangeEvent, newSession: Session | null) => {
+      setSession(newSession);
+      setUser(newSession?.user ?? null);
+      if (newSession?.user) {
+        await fetchProfile(newSession.user.id);
       } else {
         setProfile(null);
       }
       setLoading(false);
-    });
+    }
+  );
 
-    return () => subscription.unsubscribe();
-  }, [supabase, fetchProfile]);
+  return () => {
+    authListener.subscription.unsubscribe();
+  };
+}, [supabase, fetchProfile]);
 
-  function setMode(m: 'reader' | 'writer') {
+  const setMode = useCallback((m: 'reader' | 'writer') => {
     setModeState(m);
-    localStorage.setItem('ws-mode', m);
-  }
+    try {
+      localStorage.setItem('ws-mode', m);
+    } catch {
+      // localStorage недоступен
+    }
+  }, []);
 
-  async function signIn(email: string, password: string) {
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-    return error?.message ?? null;
-  }
+  const signIn = useCallback(
+    async (email: string, password: string) => {
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      return error?.message ?? null;
+    },
+    [supabase]
+  );
 
-  async function signUp(email: string, password: string, username: string) {
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: { data: { username, display_name: username } },
-    });
-    return error?.message ?? null;
-  }
+  const signUp = useCallback(
+    async (email: string, password: string, username: string) => {
+      const { error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: { data: { username, display_name: username } },
+      });
+      return error?.message ?? null;
+    },
+    [supabase]
+  );
 
-  async function signOut() {
+  const handleSignOut = useCallback(async () => {
     await supabase.auth.signOut();
     setProfile(null);
-  }
+  }, [supabase]);
 
-  async function signInWithProvider(provider: 'google' | 'github') {
-    await supabase.auth.signInWithOAuth({
-      provider,
-      options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
-      },
-    });
-  }
-
-  return (
-    <Ctx.Provider
-      value={{
-        user,
-        profile,
-        session,
-        loading,
-        mode,
-        setMode,
-        signIn,
-        signUp,
-        signOut,
-        signInWithProvider,
-      }}
-    >
-      {children}
-    </Ctx.Provider>
+  const signInWithProvider = useCallback(
+    async (provider: 'google' | 'github') => {
+      await supabase.auth.signInWithOAuth({
+        provider,
+        options: {
+          redirectTo: `${window.location.origin}/auth/callback`,
+        },
+      });
+    },
+    [supabase]
   );
+
+  const value = useMemo<AuthCtx>(
+    () => ({
+      user,
+      profile,
+      session,
+      loading,
+      mode,
+      setMode,
+      signIn,
+      signUp,
+      signOut: handleSignOut,
+      signInWithProvider,
+    }),
+    [user, profile, session, loading, mode, setMode, signIn, signUp, handleSignOut, signInWithProvider]
+  );
+
+  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 
 export function useAuth() {

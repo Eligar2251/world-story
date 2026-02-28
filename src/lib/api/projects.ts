@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server';
+import { unstable_cache } from 'next/cache';
 import type { Project, Genre, Tag } from '@/lib/types/database';
 
 export interface ProjectFilters {
@@ -12,6 +13,34 @@ export interface ProjectFilters {
 }
 
 const PER_PAGE = 20;
+
+// Кэшируем жанры на 1 час — они почти не меняются
+export const getGenres = unstable_cache(
+  async () => {
+    const supabase = await createClient();
+    const { data } = await supabase
+      .from('genres')
+      .select('*')
+      .order('name');
+    return (data as Genre[]) ?? [];
+  },
+  ['genres'],
+  { revalidate: 3600 }
+);
+
+// Кэшируем теги на 1 час
+export const getTags = unstable_cache(
+  async () => {
+    const supabase = await createClient();
+    const { data } = await supabase
+      .from('tags')
+      .select('*')
+      .order('name');
+    return (data as Tag[]) ?? [];
+  },
+  ['tags'],
+  { revalidate: 3600 }
+);
 
 export async function getProjects(filters: ProjectFilters = {}) {
   const supabase = await createClient();
@@ -116,24 +145,6 @@ export async function getProjectChapters(projectId: string) {
     .order('sort_order', { ascending: true });
 
   return data ?? [];
-}
-
-export async function getGenres() {
-  const supabase = await createClient();
-  const { data } = await supabase
-    .from('genres')
-    .select('*')
-    .order('name');
-  return (data as Genre[]) ?? [];
-}
-
-export async function getTags() {
-  const supabase = await createClient();
-  const { data } = await supabase
-    .from('tags')
-    .select('*')
-    .order('name');
-  return (data as Tag[]) ?? [];
 }
 
 export async function getPopularProjects(limit = 10) {
