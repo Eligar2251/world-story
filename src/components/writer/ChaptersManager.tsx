@@ -57,7 +57,6 @@ export default function ChaptersManager({
     new Set(initVolumes.map((v) => v.id))
   );
 
-  // Drag state
   const dragItem = useRef<number | null>(null);
   const dragOverItem = useRef<number | null>(null);
 
@@ -95,10 +94,13 @@ export default function ChaptersManager({
         status: 'draft',
         content: '',
       })
-      .select()
+      .select('*')
       .single();
 
-    if (data) {
+    if (error) {
+      console.error('Create chapter error:', error);
+      alert(`Ошибка создания главы: ${error.message}`);
+    } else if (data) {
       setChapters((prev) => [...prev, data as Chapter]);
       setNewTitle('');
       setShowNewChapter(false);
@@ -111,17 +113,20 @@ export default function ChaptersManager({
     if (!newVolumeTitle.trim()) return;
     setCreating(true);
 
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('volumes')
       .insert({
         project_id: project.id,
         title: newVolumeTitle.trim(),
         sort_order: volumes.length,
       })
-      .select()
+      .select('*')
       .single();
 
-    if (data) {
+    if (error) {
+      console.error('Create volume error:', error);
+      alert(`Ошибка создания тома: ${error.message}`);
+    } else if (data) {
       setVolumes((prev) => [...prev, data as Volume]);
       setExpandedVolumes((prev) => new Set([...prev, data.id]));
       setNewVolumeTitle('');
@@ -132,31 +137,48 @@ export default function ChaptersManager({
 
   // ---- Delete Chapter ----
   async function handleDeleteChapter(id: string) {
-    if (!confirm('Удалить главу?')) return;
-    await supabase.from('chapters').delete().eq('id', id);
-    setChapters((prev) => prev.filter((c) => c.id !== id));
+    if (!confirm('Удалить главу? Это действие нельзя отменить.')) return;
+
+    const { error } = await supabase.from('chapters').delete().eq('id', id);
+
+    if (error) {
+      console.error('Delete chapter error:', error);
+      alert(`Ошибка удаления: ${error.message}`);
+    } else {
+      setChapters((prev) => prev.filter((c) => c.id !== id));
+    }
     setMenuOpen(null);
   }
 
   // ---- Toggle Publish ----
   async function handleTogglePublish(chapter: Chapter) {
-    const newStatus =
-      chapter.status === 'published' ? 'draft' : 'published';
-    const publishedAt =
-      newStatus === 'published' ? new Date().toISOString() : null;
+    const newStatus = chapter.status === 'published' ? 'draft' : 'published';
+    const publishedAt = newStatus === 'published' ? new Date().toISOString() : null;
 
-    await supabase
+    const { data, error } = await supabase
       .from('chapters')
-      .update({ status: newStatus, published_at: publishedAt })
-      .eq('id', chapter.id);
+      .update({
+        status: newStatus,
+        published_at: publishedAt,
+      })
+      .eq('id', chapter.id)
+      .select('*')
+      .single();
 
-    setChapters((prev) =>
-      prev.map((c) =>
-        c.id === chapter.id
-          ? { ...c, status: newStatus, published_at: publishedAt }
-          : c
-      )
-    );
+    if (error) {
+      console.error('Toggle publish error:', error);
+      alert(`Ошибка: ${error.message}`);
+      return;
+    }
+
+    if (data) {
+      setChapters((prev) =>
+        prev.map((c) =>
+          c.id === chapter.id ? (data as Chapter) : c
+        )
+      );
+    }
+
     setMenuOpen(null);
   }
 
@@ -171,33 +193,37 @@ export default function ChaptersManager({
 
   async function handleDragEnd() {
     if (dragItem.current === null || dragOverItem.current === null) return;
-    if (dragItem.current === dragOverItem.current) return;
+    if (dragItem.current === dragOverItem.current) {
+      dragItem.current = null;
+      dragOverItem.current = null;
+      return;
+    }
 
     const reordered = [...chapters];
     const [removed] = reordered.splice(dragItem.current, 1);
     reordered.splice(dragOverItem.current, 0, removed);
 
-    // Update sort_order locally
     const updated = reordered.map((ch, i) => ({
       ...ch,
       sort_order: i,
     }));
     setChapters(updated);
 
-    // Persist
-    const promises = updated.map((ch) =>
-      supabase
-        .from('chapters')
-        .update({ sort_order: ch.sort_order })
-        .eq('id', ch.id)
+    // Persist sort order
+    await Promise.all(
+      updated.map((ch) =>
+        supabase
+          .from('chapters')
+          .update({ sort_order: ch.sort_order })
+          .eq('id', ch.id)
+      )
     );
-    await Promise.all(promises);
 
     dragItem.current = null;
     dragOverItem.current = null;
   }
 
-  // Group chapters by volume
+  // Group chapters
   const ungrouped = chapters.filter((c) => !c.volume_id);
 
   return (
@@ -207,7 +233,10 @@ export default function ChaptersManager({
         <Button
           size="sm"
           icon={<Plus size={14} />}
-          onClick={() => setShowNewChapter(true)}
+          onClick={() => {
+            setShowNewChapter(true);
+            setShowNewVolume(false);
+          }}
         >
           Добавить главу
         </Button>
@@ -215,7 +244,10 @@ export default function ChaptersManager({
           size="sm"
           variant="secondary"
           icon={<Plus size={14} />}
-          onClick={() => setShowNewVolume(true)}
+          onClick={() => {
+            setShowNewVolume(true);
+            setShowNewChapter(false);
+          }}
         >
           Добавить том
         </Button>
@@ -237,7 +269,10 @@ export default function ChaptersManager({
           <Button
             size="sm"
             variant="ghost"
-            onClick={() => setShowNewVolume(false)}
+            onClick={() => {
+              setShowNewVolume(false);
+              setNewVolumeTitle('');
+            }}
           >
             Отмена
           </Button>
@@ -251,9 +286,7 @@ export default function ChaptersManager({
             placeholder="Название главы..."
             value={newTitle}
             onChange={(e) => setNewTitle(e.target.value)}
-            onKeyDown={(e) =>
-              e.key === 'Enter' && handleCreateChapter()
-            }
+            onKeyDown={(e) => e.key === 'Enter' && handleCreateChapter()}
             className="flex-1"
           />
           <Button
@@ -266,7 +299,10 @@ export default function ChaptersManager({
           <Button
             size="sm"
             variant="ghost"
-            onClick={() => setShowNewChapter(false)}
+            onClick={() => {
+              setShowNewChapter(false);
+              setNewTitle('');
+            }}
           >
             Отмена
           </Button>
@@ -275,9 +311,9 @@ export default function ChaptersManager({
 
       {/* Volumes */}
       {volumes.map((volume) => {
-        const volChapters = chapters.filter(
-          (c) => c.volume_id === volume.id
-        );
+        const volChapters = chapters
+          .filter((c) => c.volume_id === volume.id)
+          .sort((a, b) => a.sort_order - b.sort_order);
         const expanded = expandedVolumes.has(volume.id);
 
         return (
@@ -311,6 +347,11 @@ export default function ChaptersManager({
                     onTogglePublish={handleTogglePublish}
                   />
                 ))}
+                {volChapters.length === 0 && (
+                  <p className="text-xs text-ink-muted py-2 pl-3">
+                    В этом томе пока нет глав
+                  </p>
+                )}
               </div>
             )}
           </div>
@@ -322,26 +363,29 @@ export default function ChaptersManager({
         <p className="text-xs text-ink-muted mb-2 mt-4">Без тома</p>
       )}
       <div className="space-y-1">
-        {ungrouped.map((ch, i) => (
-          <div
-            key={ch.id}
-            draggable
-            onDragStart={() => handleDragStart(chapters.indexOf(ch))}
-            onDragEnter={() => handleDragEnter(chapters.indexOf(ch))}
-            onDragEnd={handleDragEnd}
-            onDragOver={(e) => e.preventDefault()}
-          >
-            <ChapterRow
-              chapter={ch}
-              projectId={project.id}
-              menuOpen={menuOpen}
-              setMenuOpen={setMenuOpen}
-              onDelete={handleDeleteChapter}
-              onTogglePublish={handleTogglePublish}
+        {ungrouped.map((ch) => {
+          const globalIndex = chapters.indexOf(ch);
+          return (
+            <div
+              key={ch.id}
               draggable
-            />
-          </div>
-        ))}
+              onDragStart={() => handleDragStart(globalIndex)}
+              onDragEnter={() => handleDragEnter(globalIndex)}
+              onDragEnd={handleDragEnd}
+              onDragOver={(e) => e.preventDefault()}
+            >
+              <ChapterRow
+                chapter={ch}
+                projectId={project.id}
+                menuOpen={menuOpen}
+                setMenuOpen={setMenuOpen}
+                onDelete={handleDeleteChapter}
+                onTogglePublish={handleTogglePublish}
+                draggable
+              />
+            </div>
+          );
+        })}
       </div>
 
       {chapters.length === 0 && !showNewChapter && (
@@ -372,6 +416,14 @@ function ChapterRow({
   onTogglePublish: (ch: Chapter) => void;
   draggable?: boolean;
 }) {
+  const [publishing, setPublishing] = useState(false);
+
+  async function handlePublishClick() {
+    setPublishing(true);
+    await onTogglePublish(chapter);
+    setPublishing(false);
+  }
+
   return (
     <div className="flex items-center gap-2 px-3 py-2.5 bg-surface-raised border border-line rounded-lg hover:shadow-soft transition-shadow group">
       {draggable && (
@@ -384,6 +436,7 @@ function ChapterRow({
       <Link
         href={`/editor/${chapter.id}`}
         className="flex-1 min-w-0 flex items-center gap-3"
+        prefetch={false}
       >
         <span className="text-sm text-ink hover:text-accent transition-colors truncate">
           {chapter.title}
@@ -392,17 +445,19 @@ function ChapterRow({
 
       <div className="flex items-center gap-2 shrink-0">
         <span className="text-xs text-ink-muted hidden sm:inline">
-          {chapter.word_count.toLocaleString()} сл.
+          {(chapter.word_count ?? 0).toLocaleString()} сл.
         </span>
-        <Badge variant={statusVariant[chapter.status]}>
-          {statusLabel[chapter.status]}
+        <Badge variant={statusVariant[chapter.status] ?? 'default'}>
+          {statusLabel[chapter.status] ?? chapter.status}
         </Badge>
 
         <div className="relative">
           <button
-            onClick={() =>
-              setMenuOpen(menuOpen === chapter.id ? null : chapter.id)
-            }
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setMenuOpen(menuOpen === chapter.id ? null : chapter.id);
+            }}
             className="p-1 rounded text-ink-muted hover:text-ink hover:bg-surface-overlay transition-colors"
           >
             <MoreVertical size={14} />
@@ -413,44 +468,47 @@ function ChapterRow({
                 className="fixed inset-0 z-10"
                 onClick={() => setMenuOpen(null)}
               />
-              <div className="absolute right-0 top-full mt-1 w-44 bg-surface-raised border border-line rounded-lg shadow-elevated py-1 z-20">
+              <div className="absolute right-0 top-full mt-1 w-48 bg-surface-raised border border-line rounded-xl shadow-elevated py-1.5 z-20">
                 <Link
                   href={`/editor/${chapter.id}`}
                   onClick={() => setMenuOpen(null)}
-                  className="flex items-center gap-2 px-3 py-2 text-sm text-ink-secondary hover:bg-surface-overlay"
+                  className="flex items-center gap-2 px-3 py-2 text-sm text-ink-secondary hover:bg-surface-overlay transition-colors"
                 >
                   <Edit3 size={14} />
                   Редактировать
                 </Link>
                 <button
-                  onClick={() => onTogglePublish(chapter)}
-                  className="flex items-center gap-2 px-3 py-2 text-sm text-ink-secondary hover:bg-surface-overlay w-full text-left"
+                  onClick={handlePublishClick}
+                  disabled={publishing}
+                  className="flex items-center gap-2 px-3 py-2 text-sm text-ink-secondary hover:bg-surface-overlay transition-colors w-full text-left disabled:opacity-50"
                 >
-                  {chapter.status === 'published' ? (
-                    <>
-                      <Lock size={14} />
-                      Снять с публикации
-                    </>
+                  {publishing ? (
+                    <svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24" fill="none">
+                      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeDasharray="31.42 31.42" strokeDashoffset="10" />
+                    </svg>
+                  ) : chapter.status === 'published' ? (
+                    <Lock size={14} />
                   ) : (
-                    <>
-                      <Globe size={14} />
-                      Опубликовать
-                    </>
+                    <Globe size={14} />
                   )}
+                  {chapter.status === 'published'
+                    ? 'Снять с публикации'
+                    : 'Опубликовать'}
                 </button>
                 {chapter.status === 'published' && (
                   <Link
                     href={`/read/${chapter.id}`}
                     onClick={() => setMenuOpen(null)}
-                    className="flex items-center gap-2 px-3 py-2 text-sm text-ink-secondary hover:bg-surface-overlay"
+                    className="flex items-center gap-2 px-3 py-2 text-sm text-ink-secondary hover:bg-surface-overlay transition-colors"
                   >
                     <Eye size={14} />
                     Читать
                   </Link>
                 )}
+                <div className="border-t border-line my-1" />
                 <button
                   onClick={() => onDelete(chapter.id)}
-                  className="flex items-center gap-2 px-3 py-2 text-sm text-red-500 hover:bg-surface-overlay w-full text-left"
+                  className="flex items-center gap-2 px-3 py-2 text-sm text-red-500 hover:bg-red-500/5 transition-colors w-full text-left"
                 >
                   <Trash2 size={14} />
                   Удалить
