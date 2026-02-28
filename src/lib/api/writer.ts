@@ -43,7 +43,17 @@ export async function getMyProject(id: string) {
     .eq('author_id', user.id)
     .single();
 
-  return data as unknown as Project | null;
+  if (!data) return null;
+
+  // Загружаем теги отдельно
+  const { data: tagLinks } = await supabase
+    .from('project_tags')
+    .select('tag_id, tags(id,name,slug)')
+    .eq('project_id', id);
+
+  const tags = tagLinks?.map((t: any) => t.tags).filter(Boolean) ?? [];
+
+  return { ...(data as unknown as Project), tags } as Project;
 }
 
 export async function getProjectVolumes(projectId: string) {

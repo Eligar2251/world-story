@@ -6,12 +6,11 @@ import {
   getMagicSystems, getTimelineEras, getTimelineEvents,
   getCreatures, getArtifacts, getFactionRelations,
 } from '@/lib/api/world';
-import dynamic from 'next/dynamic';
+import nextDynamic from 'next/dynamic';
 
-export const revalidate = 0;
+export const dynamic = 'force-dynamic';
 
-// Ленивая загрузка — компонент огромный, не блокируем первый рендер
-const WorldArchitect = dynamic(
+const WorldArchitect = nextDynamic(
   () => import('./WorldArchitect'),
   {
     loading: () => (

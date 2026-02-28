@@ -1,5 +1,4 @@
 import { createClient } from '@/lib/supabase/server';
-import { unstable_cache } from 'next/cache';
 import type { Project, Genre, Tag } from '@/lib/types/database';
 
 export interface ProjectFilters {
@@ -14,33 +13,23 @@ export interface ProjectFilters {
 
 const PER_PAGE = 20;
 
-// Кэшируем жанры на 1 час — они почти не меняются
-export const getGenres = unstable_cache(
-  async () => {
-    const supabase = await createClient();
-    const { data } = await supabase
-      .from('genres')
-      .select('*')
-      .order('name');
-    return (data as Genre[]) ?? [];
-  },
-  ['genres'],
-  { revalidate: 3600 }
-);
+export async function getGenres() {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from('genres')
+    .select('*')
+    .order('name');
+  return (data as Genre[]) ?? [];
+}
 
-// Кэшируем теги на 1 час
-export const getTags = unstable_cache(
-  async () => {
-    const supabase = await createClient();
-    const { data } = await supabase
-      .from('tags')
-      .select('*')
-      .order('name');
-    return (data as Tag[]) ?? [];
-  },
-  ['tags'],
-  { revalidate: 3600 }
-);
+export async function getTags() {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from('tags')
+    .select('*')
+    .order('name');
+  return (data as Tag[]) ?? [];
+}
 
 export async function getProjects(filters: ProjectFilters = {}) {
   const supabase = await createClient();
@@ -95,7 +84,7 @@ export async function getProjects(filters: ProjectFilters = {}) {
 
   query = query.range(from, to);
 
-  const { data, count, error } = await query;
+  const { data, count } = await query;
 
   return {
     projects: (data as unknown as Project[]) ?? [],
@@ -108,7 +97,7 @@ export async function getProjects(filters: ProjectFilters = {}) {
 export async function getProjectById(id: string) {
   const supabase = await createClient();
 
-  const { data, error } = await supabase
+  const { data } = await supabase
     .from('projects')
     .select(
       `
@@ -120,9 +109,8 @@ export async function getProjectById(id: string) {
     .eq('id', id)
     .single();
 
-  if (error || !data) return null;
+  if (!data) return null;
 
-  // get tags
   const { data: tagLinks } = await supabase
     .from('project_tags')
     .select('tag_id, tags(id,name,slug)')
