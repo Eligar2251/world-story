@@ -9,6 +9,8 @@ const nextConfig: NextConfig = {
         pathname: '/storage/v1/object/public/**',
       },
     ],
+    // Отключаем оптимизацию для Storage URL чтобы не было 400 ошибок
+    unoptimized: false,
   },
 };
 

@@ -2,14 +2,20 @@
 
 import { useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { Upload, X, BookOpen } from 'lucide-react';
+import { Upload, X, BookOpen, Loader2 } from 'lucide-react';
 import Image from 'next/image';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import Select from '@/components/ui/Select';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { createClient } from '@/lib/supabase/client';
-import type { Genre, Tag, Project, ProjectStatus, ProjectVisibility } from '@/lib/types/database';
+import type {
+  Genre,
+  Tag,
+  Project,
+  ProjectStatus,
+  ProjectVisibility,
+} from '@/lib/types/database';
 
 const statusOptions = [
   { value: 'draft', label: 'Черновик' },
@@ -40,7 +46,9 @@ export default function ProjectForm({ genres, tags, project }: Props) {
   const [title, setTitle] = useState(project?.title ?? '');
   const [description, setDescription] = useState(project?.description ?? '');
   const [genreId, setGenreId] = useState(String(project?.genre_id ?? ''));
-  const [status, setStatus] = useState<ProjectStatus>(project?.status ?? 'draft');
+  const [status, setStatus] = useState<ProjectStatus>(
+    project?.status ?? 'draft'
+  );
   const [visibility, setVisibility] = useState<ProjectVisibility>(
     project?.visibility ?? 'private'
   );
@@ -48,8 +56,8 @@ export default function ProjectForm({ genres, tags, project }: Props) {
     project?.tags?.map((t) => t.id) ?? []
   );
   const [coverUrl, setCoverUrl] = useState(project?.cover_url ?? '');
-  const [coverFile, setCoverFile] = useState<File | null>(null);
   const [coverPreview, setCoverPreview] = useState(project?.cover_url ?? '');
+  const [uploading, setUploading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -62,15 +70,70 @@ export default function ProjectForm({ genres, tags, project }: Props) {
       .slice(0, 80);
   }
 
-  function handleCoverChange(e: React.ChangeEvent<HTMLInputElement>) {
+  async function handleCoverChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
-    if (!file) return;
+    if (!file || !user) return;
+
     if (file.size > 5 * 1024 * 1024) {
-      setError('Файл обложки не более 5 МБ');
+      setError('Обложка не более 5 МБ');
       return;
     }
-    setCoverFile(file);
-    setCoverPreview(URL.createObjectURL(file));
+
+    if (!file.type.startsWith('image/')) {
+      setError('Допустимы только изображения');
+      return;
+    }
+
+    setError('');
+    setUploading(true);
+
+    try {
+      const ext = file.name.split('.').pop()?.toLowerCase() ?? 'jpg';
+      const filePath = `${user.id}/${Date.now()}.${ext}`;
+
+      // Удаляем старую обложку
+      if (coverUrl) {
+        const oldPath = extractStoragePath(coverUrl, 'covers');
+        if (oldPath) {
+          await supabase.storage.from('covers').remove([oldPath]);
+        }
+      }
+
+      const { error: uploadError } = await supabase.storage
+        .from('covers')
+        .upload(filePath, file, {
+          cacheControl: '3600',
+          upsert: true,
+          contentType: file.type,
+        });
+
+      if (uploadError) {
+        throw new Error(`Ошибка загрузки: ${uploadError.message}`);
+      }
+
+      const { data: urlData } = supabase.storage
+        .from('covers')
+        .getPublicUrl(filePath);
+
+      setCoverUrl(urlData.publicUrl);
+      setCoverPreview(urlData.publicUrl);
+    } catch (err: any) {
+      setError(err.message || 'Не удалось загрузить обложку');
+    } finally {
+      setUploading(false);
+      if (fileRef.current) fileRef.current.value = '';
+    }
+  }
+
+  function handleRemoveCover() {
+    if (coverUrl && user) {
+      const oldPath = extractStoragePath(coverUrl, 'covers');
+      if (oldPath) {
+        supabase.storage.from('covers').remove([oldPath]);
+      }
+    }
+    setCoverUrl('');
+    setCoverPreview('');
   }
 
   function toggleTag(tagId: number) {
@@ -92,31 +155,13 @@ export default function ProjectForm({ genres, tags, project }: Props) {
     setError('');
 
     try {
-      let finalCoverUrl = coverUrl;
-
-      // Upload cover
-      if (coverFile) {
-        const ext = coverFile.name.split('.').pop();
-        const path = `${user.id}/${Date.now()}.${ext}`;
-        const { error: upErr } = await supabase.storage
-          .from('covers')
-          .upload(path, coverFile, { upsert: true });
-
-        if (upErr) throw new Error('Ошибка загрузки обложки');
-
-        const { data: urlData } = supabase.storage
-          .from('covers')
-          .getPublicUrl(path);
-        finalCoverUrl = urlData.publicUrl;
-      }
-
       const slug = slugify(title) || `project-${Date.now()}`;
 
       const projectData = {
         title: title.trim(),
         slug,
         description: description.trim() || null,
-        cover_url: finalCoverUrl || null,
+        cover_url: coverUrl || null,
         genre_id: genreId ? Number(genreId) : null,
         status,
         visibility,
@@ -168,20 +213,26 @@ export default function ProjectForm({ genres, tags, project }: Props) {
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       {error && (
-        <div className="p-3 rounded bg-red-500/10 border border-red-500/20 text-sm text-red-500">
+        <div className="p-3 rounded-lg bg-red-500/8 border border-red-500/15 text-sm text-red-600">
           {error}
         </div>
       )}
 
       {/* Cover */}
       <div>
-        <label className="text-sm font-medium text-ink-secondary block mb-2">
+        <label className="text-xs font-semibold text-ink-secondary uppercase tracking-wide block mb-2">
           Обложка
         </label>
         <div className="flex items-start gap-4">
           <div
-            className="w-32 h-48 rounded-lg border-2 border-dashed border-line hover:border-accent flex items-center justify-center cursor-pointer overflow-hidden bg-surface-overlay transition-colors"
-            onClick={() => fileRef.current?.click()}
+            className={`
+              w-32 h-48 rounded-xl border-2 border-dashed border-line
+              hover:border-accent/40 flex items-center justify-center
+              cursor-pointer overflow-hidden bg-surface-overlay
+              transition-all duration-150 relative
+              ${uploading ? 'opacity-60 pointer-events-none' : ''}
+            `}
+            onClick={() => !uploading && fileRef.current?.click()}
           >
             {coverPreview ? (
               <Image
@@ -190,34 +241,46 @@ export default function ProjectForm({ genres, tags, project }: Props) {
                 width={128}
                 height={192}
                 className="w-full h-full object-cover"
+                unoptimized
               />
             ) : (
               <div className="text-center p-2">
-                <Upload className="w-6 h-6 text-ink-muted mx-auto mb-1" />
-                <span className="text-xs text-ink-muted">Загрузить</span>
+                <Upload className="w-5 h-5 text-ink-muted mx-auto mb-1" />
+                <span className="text-2xs text-ink-muted">Загрузить</span>
+              </div>
+            )}
+            {uploading && (
+              <div className="absolute inset-0 bg-surface/60 flex items-center justify-center">
+                <Loader2 className="w-5 h-5 text-accent animate-spin" />
               </div>
             )}
           </div>
+
           <input
             ref={fileRef}
             type="file"
-            accept="image/*"
+            accept="image/jpeg,image/png,image/webp,image/gif"
             onChange={handleCoverChange}
             className="hidden"
           />
-          {coverPreview && (
-            <button
-              type="button"
-              onClick={() => {
-                setCoverFile(null);
-                setCoverPreview('');
-                setCoverUrl('');
-              }}
-              className="p-1.5 rounded text-ink-muted hover:text-red-500 hover:bg-surface-overlay"
-            >
-              <X size={16} />
-            </button>
-          )}
+
+          <div className="flex flex-col gap-1 pt-1">
+            {coverPreview && (
+              <button
+                type="button"
+                onClick={handleRemoveCover}
+                disabled={uploading}
+                className="text-sm text-red-500 hover:underline disabled:opacity-50 text-left"
+              >
+                Удалить обложку
+              </button>
+            )}
+            <span className="text-2xs text-ink-muted">
+              JPG, PNG, WebP. До 5 МБ.
+              <br />
+              Рекомендуемое 400 x 600
+            </span>
+          </div>
         </div>
       </div>
 
@@ -232,7 +295,7 @@ export default function ProjectForm({ genres, tags, project }: Props) {
 
       {/* Description */}
       <div>
-        <label className="text-sm font-medium text-ink-secondary block mb-1.5">
+        <label className="text-xs font-semibold text-ink-secondary uppercase tracking-wide block mb-1.5">
           Аннотация
         </label>
         <textarea
@@ -240,7 +303,7 @@ export default function ProjectForm({ genres, tags, project }: Props) {
           onChange={(e) => setDescription(e.target.value)}
           placeholder="О чём ваша история..."
           rows={5}
-          className="w-full rounded bg-surface-overlay border border-line px-3 py-2 text-sm text-ink placeholder:text-ink-muted focus:outline-none focus:ring-2 focus:ring-accent/40 resize-y"
+          className="w-full rounded-lg bg-surface border border-line px-3 py-2 text-sm text-ink placeholder:text-ink-muted focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent/50 resize-y transition-all"
         />
       </div>
 
@@ -273,7 +336,7 @@ export default function ProjectForm({ genres, tags, project }: Props) {
 
       {/* Tags */}
       <div>
-        <label className="text-sm font-medium text-ink-secondary block mb-2">
+        <label className="text-xs font-semibold text-ink-secondary uppercase tracking-wide block mb-2">
           Теги
         </label>
         <div className="flex flex-wrap gap-2">
@@ -284,10 +347,10 @@ export default function ProjectForm({ genres, tags, project }: Props) {
                 key={tag.id}
                 type="button"
                 onClick={() => toggleTag(tag.id)}
-                className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
+                className={`px-3 py-1 rounded-full text-xs font-medium border transition-all duration-150 ${
                   selected
-                    ? 'bg-accent-soft text-accent border-accent/30'
-                    : 'bg-surface-overlay text-ink-secondary border-line hover:border-accent/30'
+                    ? 'bg-accent-soft text-accent border-accent/25'
+                    : 'bg-surface-overlay text-ink-secondary border-line hover:border-accent/25 hover:text-ink'
                 }`}
               >
                 {tag.name}
@@ -302,14 +365,21 @@ export default function ProjectForm({ genres, tags, project }: Props) {
         <Button type="submit" loading={loading}>
           {isEdit ? 'Сохранить' : 'Создать проект'}
         </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          onClick={() => router.back()}
-        >
+        <Button type="button" variant="ghost" onClick={() => router.back()}>
           Отмена
         </Button>
       </div>
     </form>
   );
+}
+
+function extractStoragePath(url: string, bucket: string): string | null {
+  try {
+    const marker = `/storage/v1/object/public/${bucket}/`;
+    const idx = url.indexOf(marker);
+    if (idx === -1) return null;
+    return url.slice(idx + marker.length);
+  } catch {
+    return null;
+  }
 }
