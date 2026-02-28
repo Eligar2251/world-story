@@ -13,9 +13,16 @@ export type Theme = 'light' | 'dark' | 'sepia' | 'amoled';
 interface ThemeCtx {
   theme: Theme;
   setTheme: (t: Theme) => void;
+  mounted: boolean;
 }
 
-const Ctx = createContext<ThemeCtx | undefined>(undefined);
+const defaultCtx: ThemeCtx = {
+  theme: 'light',
+  setTheme: () => {},
+  mounted: false,
+};
+
+const Ctx = createContext<ThemeCtx>(defaultCtx);
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setThemeState] = useState<Theme>('light');
@@ -37,19 +44,13 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     localStorage.setItem('ws-theme', t);
   }
 
-  if (!mounted) {
-    return <div style={{ visibility: 'hidden' }}>{children}</div>;
-  }
-
   return (
-    <Ctx.Provider value={{ theme, setTheme: applyTheme }}>
-      {children}
+    <Ctx.Provider value={{ theme, setTheme: applyTheme, mounted }}>
+      {mounted ? children : <div style={{ visibility: 'hidden' }}>{children}</div>}
     </Ctx.Provider>
   );
 }
 
 export function useTheme() {
-  const ctx = useContext(Ctx);
-  if (!ctx) throw new Error('useTheme requires ThemeProvider');
-  return ctx;
+  return useContext(Ctx);
 }

@@ -29,7 +29,20 @@ interface AuthCtx {
   signInWithProvider: (provider: 'google' | 'github') => Promise<void>;
 }
 
-const Ctx = createContext<AuthCtx | undefined>(undefined);
+const defaultCtx: AuthCtx = {
+  user: null,
+  profile: null,
+  session: null,
+  loading: true,
+  mode: 'reader',
+  setMode: () => {},
+  signIn: async () => null,
+  signUp: async () => null,
+  signOut: async () => {},
+  signInWithProvider: async () => {},
+};
+
+const Ctx = createContext<AuthCtx>(defaultCtx);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -129,7 +142,5 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 }
 
 export function useAuth() {
-  const ctx = useContext(Ctx);
-  if (!ctx) throw new Error('useAuth requires AuthProvider');
-  return ctx;
+  return useContext(Ctx);
 }

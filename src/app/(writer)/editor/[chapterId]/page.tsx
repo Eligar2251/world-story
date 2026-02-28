@@ -3,6 +3,7 @@ import { getChapterForEditor } from '@/lib/api/writer';
 import { getCharacters, getFactions, getLocations } from '@/lib/api/world';
 import EditorClient from './EditorClient';
 
+export const dynamic = 'force-dynamic';
 export default async function EditorPage({
   params,
 }: {

@@ -8,6 +8,8 @@ import {
 } from '@/lib/api/world';
 import WorldArchitect from './WorldArchitect';
 
+export const dynamic = 'force-dynamic';
+
 export default async function WorldPage({
   params,
 }: { params: Promise<{ id: string }> }) {

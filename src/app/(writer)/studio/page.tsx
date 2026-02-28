@@ -5,6 +5,9 @@ import { getGenres } from '@/lib/api/projects';
 import Button from '@/components/ui/Button';
 import StudioProjectList from './StudioProjectList';
 
+
+export const dynamic = 'force-dynamic';
+
 export default async function StudioPage() {
   const [projects, genres] = await Promise.all([
     getMyProjects(),

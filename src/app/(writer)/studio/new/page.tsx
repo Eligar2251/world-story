@@ -1,6 +1,8 @@
 import { getGenres, getTags } from '@/lib/api/projects';
 import ProjectForm from '@/components/writer/ProjectForm';
 
+export const dynamic = 'force-dynamic';
+
 export default async function NewProjectPage() {
   const [genres, tags] = await Promise.all([getGenres(), getTags()]);
 

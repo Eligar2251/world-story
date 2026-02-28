@@ -8,6 +8,8 @@ import {
 import { getGenres, getTags } from '@/lib/api/projects';
 import ProjectDashboard from './ProjectDashboard';
 
+export const dynamic = 'force-dynamic';
+
 export default async function ProjectPage({
   params,
 }: {
