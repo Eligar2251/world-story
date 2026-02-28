@@ -4,8 +4,8 @@
   "description": "Платформа для писателей и читателей",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#0F1117",
-  "theme_color": "#4F46E5",
+  "background_color": "#12110F",
+  "theme_color": "#B07D3B",
   "icons": [
     { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
     { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" }

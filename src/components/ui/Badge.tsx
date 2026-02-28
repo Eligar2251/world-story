@@ -3,11 +3,11 @@ import type { ReactNode } from 'react';
 type Variant = 'default' | 'accent' | 'success' | 'warning' | 'danger';
 
 const styles: Record<Variant, string> = {
-  default: 'bg-surface-overlay text-ink-secondary',
-  accent: 'bg-accent-soft text-accent',
-  success: 'bg-green-500/10 text-green-600',
-  warning: 'bg-amber-500/10 text-amber-600',
-  danger: 'bg-red-500/10 text-red-600',
+  default: 'bg-surface-overlay text-ink-secondary border border-line',
+  accent: 'bg-accent-soft text-accent border border-accent/15',
+  success: 'bg-emerald-500/8 text-emerald-700 border border-emerald-500/15',
+  warning: 'bg-amber-500/8 text-amber-700 border border-amber-500/15',
+  danger: 'bg-red-500/8 text-red-700 border border-red-500/15',
 };
 
 interface Props {
@@ -23,7 +23,7 @@ export default function Badge({
 }: Props) {
   return (
     <span
-      className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${styles[variant]} ${className}`}
+      className={`inline-flex items-center px-2 py-0.5 rounded-md text-2xs font-medium leading-tight ${styles[variant]} ${className}`}
     >
       {children}
     </span>
